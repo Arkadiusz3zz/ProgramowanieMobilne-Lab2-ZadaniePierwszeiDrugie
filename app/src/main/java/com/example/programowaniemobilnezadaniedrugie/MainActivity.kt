@@ -1,6 +1,8 @@
 package com.example.programowaniemobilnezadaniedrugie
 
+import android.app.Activity
 import android.content.Context.SENSOR_SERVICE
+import android.content.pm.ActivityInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -9,31 +11,48 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.TweenSpec
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.example.programowaniemobilnezadaniedrugie.ui.theme.ProgramowanieMobilneZadanieDrugieTheme
-
+import kotlinx.coroutines.launch
+import java.text.DecimalFormat
 
 
 class MainActivity : ComponentActivity() {
@@ -56,9 +75,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun EkranGlowny(navController: NavController){
+fun LockOrientation(orientation: Int) {
+    val activity = LocalContext.current as? Activity
+    activity?.requestedOrientation = orientation
+}
 
-    var text by remember { mutableStateOf(" ") }
+@Composable
+fun EkranGlowny(navController: NavController){
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -73,29 +96,25 @@ fun EkranGlowny(navController: NavController){
             modifier = Modifier
         ) {
         Button(onClick = {
-            navController.navigate("ekranDrugi/$text")
+            navController.navigate("ekranDrugi")
         }) {
             Text(text = "Temperatura")
         }
         Button(onClick = {
-            navController.navigate("ekranTrzeci/$text")
+            navController.navigate("ekranTrzeci")
         }) {
             Text(text = "Akcelerometr")
         }
         Button(onClick = {
-            navController.navigate("ekranCzwarty/$text")
+            navController.navigate("ekranCzwarty")
         }) {
             Text(text = "Oświetlenia")
         }
         }
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-        )
     }}
 
 @Composable
-fun EkranDrugi(navController: NavController, text: String){
+fun EkranDrugi(navController: NavController){
     val context = LocalContext.current
     val sensorManager = context.getSystemService(SENSOR_SERVICE) as SensorManager
     val temperatureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
@@ -165,37 +184,247 @@ fun EkranDrugi(navController: NavController, text: String){
     }}
 
 @Composable
-fun EkranTrzeci(navController: NavController, text: String){
+fun EkranTrzeci(navController: NavController){
+
+    val context = LocalContext.current
+    val sensorManager = context.getSystemService(SENSOR_SERVICE) as SensorManager
+    val gyroscopeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+    var gyroX by remember { mutableFloatStateOf(0f) }
+    var gyroY by remember { mutableFloatStateOf(0f) }
+    var gyroZ by remember { mutableFloatStateOf(0f) }
+
+    var offsetX by remember { mutableFloatStateOf(5f) }
+    var offsetY by remember { mutableFloatStateOf(5f) }
+    //var offsetZ by remember { mutableFloatStateOf(0f) }
+
+    val sensorEventListener = remember {
+        object : SensorEventListener{
+            override fun onSensorChanged(event: SensorEvent?) {
+                event?.let{
+                    gyroX = it.values[0]
+                    gyroY = it.values[1]
+                    gyroZ = it.values[2]
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        if (gyroscopeSensor != null){
+            sensorManager.registerListener(
+                sensorEventListener,
+                gyroscopeSensor,
+                SensorManager.SENSOR_DELAY_FASTEST
+            )
+        }
+        onDispose {
+            sensorManager.unregisterListener(sensorEventListener)
+        }
+    }
+
+    LockOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+
+    val df = DecimalFormat("#.##")
+
+    val ballSize = 30.dp
+    val platformHeight = 16.dp
+    val canvasHeight = 380.dp
+    val canvasWidth = 400.dp
+
+    val density = LocalDensity.current
+    val ballSizePx = with(density) { ballSize.toPx() }
+    val platformHeightPx = with(density) { platformHeight.toPx() }
+    val canvasWidthPx = with(density) { canvasWidth.toPx()}
+    val canvasHeightPx = with(density) { canvasHeight.toPx() }
+    val platformWidth = with(density) { 500.dp.toPx() }
+
+    // Animacja pozycji piłki (Y)
+    val ballPositionY = remember { Animatable(canvasHeightPx/2) }
+    val ballPositionX = remember { Animatable(canvasWidthPx/2) }
+
+    LaunchedEffect(Unit) {
+
+        // Animacja odbicia w osi Y
+        launch {
+            while (true) {
+
+                if (ballPositionY.value <= platformHeightPx + ballSizePx/2) {
+                    offsetY = platformHeightPx + ballSizePx - canvasHeightPx/2
+                }
+                if (ballPositionY.value >= canvasHeightPx) {
+                    offsetY = canvasHeightPx
+                }
+
+                offsetY = -gyroZ * 45
+
+                val targetValue = offsetY + canvasHeightPx/2
+
+                ballPositionY.animateTo(
+                    targetValue = targetValue,
+                    animationSpec = TweenSpec(durationMillis = 100)
+                )
+            }
+        }
+
+
+        // Animacja w osi X
+        launch {
+            while (true) {
+
+                if (ballPositionX.value <= ballSizePx/2) {
+                    offsetX = -canvasWidthPx/2 -ballSizePx
+                }
+                if (ballPositionX.value >= canvasWidthPx-ballSizePx/2) {
+                    offsetX = canvasWidthPx/2 + ballSizePx/2
+                }
+
+                offsetX = -gyroX * 45
+
+                val targetValue = offsetX + canvasWidthPx/2
+
+                ballPositionX.animateTo(
+                    targetValue = targetValue,
+                    animationSpec = TweenSpec(durationMillis = 100)
+                )
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Ekran Trzeci",
+            text = "Akcelerometr",
             fontSize = 30.sp
         )
+        Row {
+            Text(
+            text = "Z:  ${df.format(gyroX)} rad/s ",
+            fontSize = 19.sp
+        )
+            Text(
+                text = "Y:  ${df.format(gyroY)} rad/s ",
+                fontSize = 19.sp
+            )
+            Text(
+                text = "X:  ${df.format(gyroZ)} rad/s",
+                fontSize = 19.sp
+            )
+             }
+
+        Canvas(
+            modifier = Modifier
+                .size(canvasWidth, canvasHeight)
+        ) {
+            drawRoundRect(
+                color = Color.Gray,
+                topLeft = Offset(
+                    x = -5f,
+                    y = 0f
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = platformWidth,
+                    height = platformHeightPx
+                ),
+                cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+            )
+
+            val ballY = ballPositionY.value
+            val ballx = ballPositionX.value
+            // Narysuj piłkę
+            drawCircle(
+                color = Color.Red,
+                radius = ballSizePx / 2,
+                center = Offset(x = ballx, y = ballY)
+            )
+
+            // Platforma
+            drawRoundRect(
+                color = Color.Gray,
+                topLeft = Offset(
+                    x = (size.width - platformWidth) / 2,
+                    y = size.height - 20
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = platformWidth,
+                    height = platformHeightPx
+                ),
+                cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+            )
+        }
+
         Button(onClick = {
             navController.navigate("ekranPierwszy")
-        }) {
+        },
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp)) {
             Text(text = "Powrót")
         }
-        Text(
-            text = "$text",
-            fontSize = 30.sp
-        )
     }}
 
 @Composable
-fun EkranCzwarty(navController: NavController, text: String){
+fun EkranCzwarty(navController: NavController){
+
+    val context = LocalContext.current
+    val sensorManager = context.getSystemService(SENSOR_SERVICE) as SensorManager
+    val temperatureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+    var swiatlo by remember {
+        mutableStateOf("Niedostępny")
+    }
+    val sensorEventListener = remember {
+        object : SensorEventListener{
+            override fun onSensorChanged(event: SensorEvent?) {
+                event?.let{
+                    swiatlo = "${it.values[0]} lux"
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+    }
+
+    DisposableEffect(Unit){
+        if (temperatureSensor != null){
+            sensorManager.registerListener(sensorEventListener,
+                temperatureSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+        else{
+            swiatlo = "Czujnik niedostępny"
+        }
+        onDispose {
+            sensorManager.unregisterListener(sensorEventListener)
+        }
+    }
+
+    val brightness = when{
+        swiatlo.startsWith("Niedostępny") -> 1f
+        else -> {val temp = swiatlo.removeSuffix(" lux").toFloat()
+            when{
+                temp < 10000.0 -> 0.80f
+                temp in 10000.0..20000.0 -> 0.50f
+                temp > 20000.0 -> 0.10f
+                else -> 1f
+            }}
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().
+        background(Color.Black.copy(alpha = brightness)),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Ekran Czwarty",
-            fontSize = 30.sp
+            text = "Wartość oświetlenia",
+            fontSize = 30.sp,
+            color = Color.White
+        )
+        Text(
+            text = swiatlo,
+            fontSize = 30.sp,
+            color = Color.White
         )
         Button(onClick = {
             navController.navigate("ekranPierwszy")
@@ -203,7 +432,7 @@ fun EkranCzwarty(navController: NavController, text: String){
             Text(text = "Powrót")
         }
         Text(
-            text = "$text",
+            text = " ",
             fontSize = 30.sp
         )
     }}
@@ -214,26 +443,16 @@ fun NavGraph(navController: NavHostController) {
         composable("ekranPierwszy") {
             EkranGlowny(navController = navController)
         }
-        composable("ekranDrugi/{text}",
-            arguments = listOf(navArgument("text") { type = NavType.StringType})
-        ) {
-            entry ->
-            val text = entry.arguments?.getString("text") ?: "Unknown"
-            EkranDrugi(navController = navController, text = text)
+        composable("ekranDrugi") {
+            EkranDrugi(navController = navController)
         }
-        composable("ekranTrzeci/{text}",
-            arguments = listOf(navArgument("text") { type = NavType.StringType})
-            ) {
-            entry ->
-            val text = entry.arguments?.getString("text") ?: "Unknown"
-            EkranTrzeci(navController = navController, text = text)
+        composable("ekranTrzeci") {
+            EkranTrzeci(navController = navController)
         }
-        composable("ekranCzwarty/{text}",
-            arguments = listOf(navArgument("text") { type = NavType.StringType})
-            ) {
-            entry ->
-            val text = entry.arguments?.getString("text") ?: "Unknown"
-            EkranCzwarty(navController = navController, text = text)
+        composable("ekranCzwarty") {
+            EkranCzwarty(navController = navController)
         }
     }
 }
+
+
