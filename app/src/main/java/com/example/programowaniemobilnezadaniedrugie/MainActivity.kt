@@ -239,7 +239,6 @@ fun EkranTrzeci(navController: NavController){
     val platformHeightPx = with(density) { platformHeight.toPx() }
     val canvasWidthPx = with(density) { canvasWidth.toPx()}
     val canvasHeightPx = with(density) { canvasHeight.toPx() }
-    val platformWidth = with(density) { 500.dp.toPx() }
 
     // Animacja pozycji piłki (Y)
     val ballPositionY = remember { Animatable(canvasHeightPx/2) }
@@ -247,48 +246,71 @@ fun EkranTrzeci(navController: NavController){
 
     LaunchedEffect(Unit) {
 
-        // Animacja odbicia w osi Y
-        launch {
-            while (true) {
+        var yCooldown = false
+        var xCooldown = false
 
-                if (ballPositionY.value <= platformHeightPx + ballSizePx/2) {
-                    offsetY = platformHeightPx + ballSizePx - canvasHeightPx/2
-                }
-                if (ballPositionY.value >= canvasHeightPx) {
-                    offsetY = canvasHeightPx
-                }
+        val dampingFactor = 0.98f // Damping factor to reduce speed
+        val dampingFactorOffset = 0.5f
 
-                offsetY = -gyroZ * 45
+        var previousGyroZ = gyroZ
+        var previousGyroX = gyroX
 
-                val targetValue = offsetY + canvasHeightPx/2
+        while (true) {
+            // Calculate offset for Y-axis
+            if (ballPositionY.value <= platformHeightPx + ballSizePx / 2) {
+                offsetY = -offsetY * dampingFactorOffset
+                yCooldown = true
+            } else if (ballPositionY.value >= canvasHeightPx - platformHeightPx - ballSizePx / 2) {
+                offsetY = -offsetY * dampingFactorOffset
+                yCooldown = true
+            } else if (!yCooldown && gyroZ != previousGyroZ) {
+                offsetY = (offsetY - gyroZ*10 - previousGyroZ * 10) * dampingFactor
+            }
 
+            // Calculate offset for X-axis
+            if (ballPositionX.value <= platformHeightPx + ballSizePx / 2) {
+                offsetX = -offsetX * dampingFactorOffset
+                xCooldown = true
+            } else if (ballPositionX.value >= canvasWidthPx - platformHeightPx - ballSizePx / 2) {
+                offsetX = -offsetX * dampingFactorOffset
+                xCooldown = true
+            } else if (!xCooldown && gyroX != previousGyroX) {
+                offsetX = (offsetX - gyroX*10 - previousGyroX * 10) * dampingFactor
+            }
+
+            // Update previous gyro values
+            previousGyroZ = gyroZ
+            previousGyroX = gyroX
+
+            // Update ball position for both axes
+            val targetValueY = ballPositionY.value + offsetY
+            val targetValueX = ballPositionX.value + offsetX
+
+            launch {
                 ballPositionY.animateTo(
-                    targetValue = targetValue,
+                    targetValue = targetValueY,
                     animationSpec = TweenSpec(durationMillis = 100)
                 )
             }
-        }
 
-
-        // Animacja w osi X
-        launch {
-            while (true) {
-
-                if (ballPositionX.value <= ballSizePx/2) {
-                    offsetX = -canvasWidthPx/2 -ballSizePx
-                }
-                if (ballPositionX.value >= canvasWidthPx-ballSizePx/2) {
-                    offsetX = canvasWidthPx/2 + ballSizePx/2
-                }
-
-                offsetX = -gyroX * 45
-
-                val targetValue = offsetX + canvasWidthPx/2
-
+            launch {
                 ballPositionX.animateTo(
-                    targetValue = targetValue,
+                    targetValue = targetValueX,
                     animationSpec = TweenSpec(durationMillis = 100)
                 )
+            }
+
+            // Add delay to prevent blocking the main thread
+            kotlinx.coroutines.delay(16L) // Approximately 60 FPS
+
+            // Reset cooldowns after a short delay
+            if (yCooldown) {
+                kotlinx.coroutines.delay(25L) // 500ms cooldown
+                yCooldown = false
+            }
+            if (xCooldown) {
+                kotlinx.coroutines.delay(25L) // 500ms cooldown
+                xCooldown = false
             }
         }
     }
@@ -324,37 +346,65 @@ fun EkranTrzeci(navController: NavController){
             drawRoundRect(
                 color = Color.Gray,
                 topLeft = Offset(
-                    x = -5f,
+                    x = 0f,
                     y = 0f
                 ),
                 size = androidx.compose.ui.geometry.Size(
-                    width = platformWidth,
+                    width = canvasWidthPx,
                     height = platformHeightPx
                 ),
                 cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
             )
 
+            // Bottom platform
+            drawRoundRect(
+                color = Color.Gray,
+                topLeft = Offset(
+                    x = 0f,
+                    y = canvasHeightPx - platformHeightPx
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = canvasWidthPx,
+                    height = platformHeightPx
+                ),
+                cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+            )
+
+            // Left platform
+            drawRoundRect(
+                color = Color.Gray,
+                topLeft = Offset(
+                    x = 0f,
+                    y = 0f
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = platformHeightPx,
+                    height = canvasHeightPx
+                ),
+                cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+            )
+
+            // Right platform
+            drawRoundRect(
+                color = Color.Gray,
+                topLeft = Offset(
+                    x = canvasWidthPx - platformHeightPx,
+                    y = 0f
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = platformHeightPx,
+                    height = canvasHeightPx
+                ),
+                cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+            )
+
+            // Draw the ball
             val ballY = ballPositionY.value
             val ballx = ballPositionX.value
-            // Narysuj piłkę
             drawCircle(
                 color = Color.Red,
                 radius = ballSizePx / 2,
                 center = Offset(x = ballx, y = ballY)
-            )
-
-            // Platforma
-            drawRoundRect(
-                color = Color.Gray,
-                topLeft = Offset(
-                    x = (size.width - platformWidth) / 2,
-                    y = size.height - 20
-                ),
-                size = androidx.compose.ui.geometry.Size(
-                    width = platformWidth,
-                    height = platformHeightPx
-                ),
-                cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
             )
         }
 
